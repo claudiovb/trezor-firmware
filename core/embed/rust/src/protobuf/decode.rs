@@ -72,7 +72,7 @@ impl Decoder {
     ) -> Result<Obj, Error> {
         let mut dict = self.empty_message(msg);
         // SAFETY: We assume that `obj` is not alised here.
-        let map = unsafe { dict.as_mut() }.map_mut();
+        let map = unsafe { Gc::<MsgObj>::as_mut(&mut dict) }.map_mut();
         self.decode_fields_into(stream, msg, map)?;
         self.decode_defaults_into(msg, map)?;
         self.assign_required_into(msg, map)?;
@@ -84,7 +84,7 @@ impl Decoder {
     pub fn message_from_values(&self, values: &Map, msg: &MsgDef) -> Result<Obj, Error> {
         let mut obj = self.empty_message(msg);
         // SAFETY: We assume that `obj` is not alised here.
-        let map = unsafe { obj.as_mut() }.map_mut();
+        let map = unsafe { Gc::<MsgObj>::as_mut(&mut obj) }.map_mut();
         for elem in values.elems() {
             map.set(elem.key, elem.value);
         }
@@ -124,7 +124,7 @@ impl Decoder {
                         if let Ok(obj) = map.get(field_name) {
                             let mut list = Gc::<List>::try_from(obj)?;
                             // SAFETY: We assume that `list` is not aliased here.
-                            unsafe { list.as_mut() }.append(field_value);
+                            unsafe { Gc::<List>::as_mut(&mut list) }.append(field_value);
                         } else {
                             let list = List::alloc(&[field_value]);
                             map.set(field_name, list);
