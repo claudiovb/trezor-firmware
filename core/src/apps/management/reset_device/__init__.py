@@ -2,10 +2,8 @@ import storage
 import storage.device
 from trezor import config, wire
 from trezor.crypto import bip39, hashlib, random, slip39
-from trezor.messages import BackupType
-from trezor.messages.EntropyAck import EntropyAck
-from trezor.messages.EntropyRequest import EntropyRequest
-from trezor.messages.Success import Success
+from trezor.enums import BackupType
+from trezor.messages import EntropyAck, EntropyRequest, Success
 from trezor.ui.layouts import confirm_backup, confirm_reset_device
 from trezor.ui.loader import LoadingAnimation
 
@@ -14,10 +12,10 @@ from ..change_pin import request_pin_confirm
 from . import layout
 
 if __debug__:
-    from apps import debug
+    import storage.debug
 
 if False:
-    from trezor.messages.ResetDevice import ResetDevice
+    from trezor.messages import ResetDevice
 
 _DEFAULT_BACKUP_TYPE = BackupType.Bip39
 
@@ -48,7 +46,7 @@ async def reset_device(ctx: wire.Context, msg: ResetDevice) -> Success:
     # generate and display internal entropy
     int_entropy = random.bytes(32)
     if __debug__:
-        debug.reset_internal_entropy = int_entropy
+        storage.debug.reset_internal_entropy = int_entropy
     if msg.display_random:
         await layout.show_internal_entropy(ctx, int_entropy)
 

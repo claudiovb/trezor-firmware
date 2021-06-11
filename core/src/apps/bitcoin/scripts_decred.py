@@ -1,9 +1,9 @@
 from trezor import utils, wire
 from trezor.crypto import base58
 from trezor.crypto.base58 import blake256d_32
-from trezor.messages import InputScriptType
+from trezor.enums import InputScriptType
 
-from apps.common.writers import empty_bytearray, write_bytes_fixed, write_uint64_le
+from apps.common.writers import write_bytes_fixed, write_uint64_le
 
 from . import scripts
 from .multisig import multisig_get_pubkeys, multisig_pubkey_index
@@ -15,14 +15,13 @@ from .scripts import (  # noqa: F401
 from .writers import write_op_push
 
 if False:
-    from trezor.messages.MultisigRedeemScriptType import MultisigRedeemScriptType
-    from trezor.messages.TxInput import EnumTypeInputScriptType
+    from trezor.messages import MultisigRedeemScriptType
 
     from apps.common.coininfo import CoinInfo
 
 
 def input_derive_script(
-    script_type: EnumTypeInputScriptType,
+    script_type: InputScriptType,
     multisig: MultisigRedeemScriptType | None,
     coin: CoinInfo,
     hash_type: int,
@@ -65,7 +64,7 @@ def input_script_multisig(
         total_length += 1 + len(s) + 1  # length, signature, hash_type
     total_length += 1 + redeem_script_length  # length, script
 
-    w = empty_bytearray(total_length)
+    w = utils.empty_bytearray(total_length)
 
     for s in signatures:
         if len(s):
@@ -85,7 +84,7 @@ def output_script_sstxsubmissionpkh(addr: str) -> bytearray:
     except ValueError:
         raise wire.DataError("Invalid address")
 
-    w = empty_bytearray(26)
+    w = utils.empty_bytearray(26)
     w.append(0xBA)  # OP_SSTX
     w.append(0x76)  # OP_DUP
     w.append(0xA9)  # OP_HASH160
@@ -103,7 +102,7 @@ def output_script_sstxchange(addr: str) -> bytearray:
     except ValueError:
         raise wire.DataError("Invalid address")
 
-    w = empty_bytearray(26)
+    w = utils.empty_bytearray(26)
     w.append(0xBD)  # OP_SSTXCHANGE
     w.append(0x76)  # OP_DUP
     w.append(0xA9)  # OP_HASH160
@@ -144,7 +143,7 @@ def output_script_ssgen(pkh: bytes) -> bytearray:
 
 # Retrieve pkh bytes from a stake commitment OPRETURN.
 def sstxcommitment_pkh(pkh: bytes, amount: int) -> bytes:
-    w = empty_bytearray(30)
+    w = utils.empty_bytearray(30)
     write_bytes_fixed(w, pkh, 20)
     write_uint64_le(w, amount)
     write_bytes_fixed(w, b"\x00\x58", 2)  # standard fee limits

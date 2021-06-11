@@ -2,11 +2,9 @@ from micropython import const
 
 from trezor import wire
 from trezor.crypto.hashlib import sha256
-from trezor.messages import InputScriptType, OutputScriptType
-from trezor.messages.TxRequest import TxRequest
-from trezor.messages.TxRequestDetailsType import TxRequestDetailsType
-from trezor.messages.TxRequestSerializedType import TxRequestSerializedType
-from trezor.utils import HashWriter, ensure
+from trezor.enums import InputScriptType, OutputScriptType
+from trezor.messages import TxRequest, TxRequestDetailsType, TxRequestSerializedType
+from trezor.utils import HashWriter, empty_bytearray, ensure
 
 from apps.common.writers import write_bitcoin_varint
 
@@ -21,12 +19,14 @@ from .tx_info import OriginalTxInfo, TxInfo
 if False:
     from trezor.crypto import bip32
 
-    from trezor.messages.SignTx import SignTx
-    from trezor.messages.TxInput import TxInput
-    from trezor.messages.TxOutput import TxOutput
-    from trezor.messages.PrevTx import PrevTx
-    from trezor.messages.PrevInput import PrevInput
-    from trezor.messages.PrevOutput import PrevOutput
+    from trezor.messages import (
+        PrevInput,
+        PrevOutput,
+        PrevTx,
+        SignTx,
+        TxInput,
+        TxOutput,
+    )
 
     from apps.common.coininfo import CoinInfo
     from apps.common.keychain import Keychain
@@ -93,7 +93,7 @@ class Bitcoin:
         self.external: set[int] = set()
 
         # transaction and signature serialization
-        self.serialized_tx = writers.empty_bytearray(_MAX_SERIALIZED_CHUNK_SIZE)
+        self.serialized_tx = empty_bytearray(_MAX_SERIALIZED_CHUNK_SIZE)
         self.tx_req = TxRequest()
         self.tx_req.details = TxRequestDetailsType()
         self.tx_req.serialized = TxRequestSerializedType()

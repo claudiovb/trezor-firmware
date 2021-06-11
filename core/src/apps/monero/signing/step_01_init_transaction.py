@@ -11,13 +11,13 @@ from apps.monero.xmr import crypto, monero
 
 if False:
     from apps.monero.xmr.types import Sc25519, Ge25519
-    from trezor.messages.MoneroTransactionData import MoneroTransactionData
-    from trezor.messages.MoneroTransactionRsigData import MoneroTransactionRsigData
-    from trezor.messages.MoneroAccountPublicAddress import MoneroAccountPublicAddress
-    from trezor.messages.MoneroTransactionDestinationEntry import (
+    from trezor.messages import (
+        MoneroAccountPublicAddress,
+        MoneroTransactionData,
         MoneroTransactionDestinationEntry,
+        MoneroTransactionInitAck,
+        MoneroTransactionRsigData,
     )
-    from trezor.messages.MoneroTransactionInitAck import MoneroTransactionInitAck
 
 
 async def init_transaction(
@@ -113,10 +113,12 @@ async def init_transaction(
 
     state.mem_trace(6)
 
-    from trezor.messages.MoneroTransactionInitAck import MoneroTransactionInitAck
-    from trezor.messages.MoneroTransactionRsigData import MoneroTransactionRsigData
+    from trezor.messages import (
+        MoneroTransactionInitAck,
+        MoneroTransactionRsigData,
+    )
 
-    rsig_data = MoneroTransactionRsigData(offload_type=state.rsig_offload)
+    rsig_data = MoneroTransactionRsigData(offload_type=int(state.rsig_offload))
 
     return MoneroTransactionInitAck(hmacs=hmacs, rsig_data=rsig_data)
 
@@ -170,7 +172,7 @@ def _get_primary_change_address(state: State) -> MoneroAccountPublicAddress:
     """
     Computes primary change address for the current account index
     """
-    from trezor.messages.MoneroAccountPublicAddress import MoneroAccountPublicAddress
+    from trezor.messages import MoneroAccountPublicAddress
 
     D, C = monero.generate_sub_address_keys(
         state.creds.view_key_private, state.creds.spend_key_public, state.account_idx, 0
@@ -273,11 +275,11 @@ def _compute_sec_keys(state: State, tsx_data: MoneroTransactionData):
     """
     Generate master key H( H(TsxData || tx_priv) || rand )
     """
-    import protobuf
+    from trezor import protobuf
     from apps.monero.xmr.keccak_hasher import get_keccak_writer
 
     writer = get_keccak_writer()
-    protobuf.dump_message(writer, tsx_data)
+    writer.write(protobuf.dump_message_buffer(tsx_data))
     writer.write(crypto.encodeint(state.tx_priv))
 
     master_key = crypto.keccak_2hash(
@@ -363,7 +365,7 @@ def _get_key_for_payment_id_encryption(
     dummy payment ID is set for better transaction uniformity if possible.
     """
     from apps.monero.xmr.addresses import addr_eq
-    from trezor.messages.MoneroAccountPublicAddress import MoneroAccountPublicAddress
+    from trezor.messages import MoneroAccountPublicAddress
 
     addr = MoneroAccountPublicAddress(
         spend_public_key=crypto.NULL_KEY_ENC, view_public_key=crypto.NULL_KEY_ENC

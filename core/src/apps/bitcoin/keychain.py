@@ -1,22 +1,23 @@
+import gc
+
 from trezor import wire
-from trezor.messages import InputScriptType as I
+from trezor.enums import InputScriptType
 
 from apps.common import coininfo
 from apps.common.keychain import get_keychain
 from apps.common.paths import PATTERN_BIP44, PathSchema
 
+from . import authorization
 from .common import BITCOIN_NAMES
 
 if False:
     from typing import Awaitable, Callable, Iterable, TypeVar
     from typing_extensions import Protocol
 
-    from trezor.messages.TxInputType import EnumTypeInputScriptType
+    from trezor.protobuf import MessageType
 
     from apps.common.keychain import Keychain, MsgOut, Handler
     from apps.common.paths import Bip32Path
-
-    from .authorization import CoinJoinAuthorization
 
     class MsgWithCoinName(Protocol):
         coin_name: str
@@ -24,7 +25,7 @@ if False:
     class MsgWithAddressScriptType(Protocol):
         # XXX should be Bip32Path but that fails
         address_n: list[int] = ...
-        script_type: EnumTypeInputScriptType = ...
+        script_type: InputScriptType = ...
 
     MsgIn = TypeVar("MsgIn", bound=MsgWithCoinName)
     HandlerWithCoinInfo = Callable[..., Awaitable[MsgOut]]
@@ -65,7 +66,7 @@ def validate_path_against_script_type(
     coin: coininfo.CoinInfo,
     msg: MsgWithAddressScriptType | None = None,
     address_n: Bip32Path | None = None,
-    script_type: EnumTypeInputScriptType | None = None,
+    script_type: InputScriptType | None = None,
     multisig: bool = False,
 ) -> bool:
     patterns = []
@@ -73,19 +74,22 @@ def validate_path_against_script_type(
     if msg is not None:
         assert address_n is None and script_type is None
         address_n = msg.address_n
-        script_type = msg.script_type or I.SPENDADDRESS
+        script_type = msg.script_type or InputScriptType.SPENDADDRESS
         multisig = bool(getattr(msg, "multisig", False))
 
     else:
         assert address_n is not None and script_type is not None
 
-    if script_type == I.SPENDADDRESS and not multisig:
+    if script_type == InputScriptType.SPENDADDRESS and not multisig:
         patterns.append(PATTERN_BIP44)
         if coin.coin_name in BITCOIN_NAMES:
             patterns.append(PATTERN_GREENADDRESS_A)
             patterns.append(PATTERN_GREENADDRESS_B)
 
-    elif script_type in (I.SPENDADDRESS, I.SPENDMULTISIG) and multisig:
+    elif (
+        script_type in (InputScriptType.SPENDADDRESS, InputScriptType.SPENDMULTISIG)
+        and multisig
+    ):
         patterns.append(PATTERN_BIP45)
         patterns.append(PATTERN_PURPOSE48_RAW)
         if coin.coin_name in BITCOIN_NAMES:
@@ -95,7 +99,7 @@ def validate_path_against_script_type(
             patterns.append(PATTERN_UNCHAINED_UNHARDENED)
             patterns.append(PATTERN_UNCHAINED_DEPRECATED)
 
-    elif coin.segwit and script_type == I.SPENDP2SHWITNESS:
+    elif coin.segwit and script_type == InputScriptType.SPENDP2SHWITNESS:
         patterns.append(PATTERN_BIP49)
         if multisig:
             patterns.append(PATTERN_PURPOSE48_P2SHSEGWIT)
@@ -104,7 +108,7 @@ def validate_path_against_script_type(
             patterns.append(PATTERN_GREENADDRESS_B)
             patterns.append(PATTERN_CASA)
 
-    elif coin.segwit and script_type == I.SPENDWITNESS:
+    elif coin.segwit and script_type == InputScriptType.SPENDWITNESS:
         patterns.append(PATTERN_BIP84)
         if multisig:
             patterns.append(PATTERN_PURPOSE48_SEGWIT)
@@ -113,7 +117,7 @@ def validate_path_against_script_type(
             patterns.append(PATTERN_GREENADDRESS_B)
 
     return any(
-        PathSchema(pattern, coin.slip44).match(address_n) for pattern in patterns
+        PathSchema.parse(pattern, coin.slip44).match(address_n) for pattern in patterns
     )
 
 
@@ -151,15 +155,16 @@ def get_schemas_for_coin(coin: coininfo.CoinInfo) -> Iterable[PathSchema]:
             )
         )
 
-    schemas = [PathSchema(pattern, coin.slip44) for pattern in patterns]
+    schemas = [PathSchema.parse(pattern, coin.slip44) for pattern in patterns]
 
     # some wallets such as Electron-Cash (BCH) store coins on Bitcoin paths
     # we can allow spending these coins from Bitcoin paths if the coin has
     # implemented strong replay protection via SIGHASH_FORKID
     if coin.fork_id is not None:
-        schemas.extend(PathSchema(pattern, 0) for pattern in patterns)
+        schemas.extend(PathSchema.parse(pattern, 0) for pattern in patterns)
 
-    return schemas
+    gc.collect()
+    return [schema.copy() for schema in schemas]
 
 
 def get_coin_by_name(coin_name: str | None) -> coininfo.CoinInfo:
@@ -186,14 +191,13 @@ def with_keychain(func: HandlerWithCoinInfo[MsgOut]) -> Handler[MsgIn, MsgOut]:
     async def wrapper(
         ctx: wire.Context,
         msg: MsgIn,
-        authorization: CoinJoinAuthorization | None = None,
+        auth_msg: MessageType | None = None,
     ) -> MsgOut:
-        if authorization:
-            keychain = authorization.keychain
-            coin = get_coin_by_name(msg.coin_name)
-            return await func(ctx, msg, keychain, coin, authorization)
+        keychain, coin = await get_keychain_for_coin(ctx, msg.coin_name)
+        if auth_msg:
+            auth_obj = authorization.from_cached_message(auth_msg)
+            return await func(ctx, msg, keychain, coin, auth_obj)
         else:
-            keychain, coin = await get_keychain_for_coin(ctx, msg.coin_name)
             with keychain:
                 return await func(ctx, msg, keychain, coin)
 
